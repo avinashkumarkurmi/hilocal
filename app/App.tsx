@@ -1,27 +1,79 @@
-import React, {useEffect} from "react";
-import { SafeAreaView } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, SafeAreaView } from "react-native";
 import { useThemeColors } from "@/constants/ThemeContext";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { Ionicons } from "@expo/vector-icons";
-import { Redirect, useRouter } from "expo-router";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
 
 import Home from "../Screens/Home";
 import Profile from "../Screens/Profile";
 import Messages from "../Screens/Messages";
 import Login from "../UnAuthencticationScreens/Login";
 import SignUp from "../UnAuthencticationScreens/SignUp";
-
+import { config } from "../config";
+import {
+  loginStart,
+  loginSuccess,
+  loginFailure,
+} from "../store/slices/authSlice";
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
 export default function App() {
+  const dispatch = useDispatch();
+  const [isAppReady, setIsAppReady] = useState(false);
 
   const color = useThemeColors();
+  useEffect(() => {
+    async function checkForToken() {
+      const token = await AsyncStorage.getItem("token");
+
+      if (token) {
+        dispatch(loginStart());
+        try {
+          const response = await axios.get(
+            `${config.API_URL}/auth/checkToken`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          dispatch(loginSuccess(response.data));
+          console.log("Login successful using token");
+        } catch (error) {
+          dispatch(
+            loginFailure(
+              error instanceof Error ? error.message : "Something went wrong"
+            )
+          );
+        }
+      } else {
+        dispatch(loginFailure("No token found"));
+      }
+      setIsAppReady(true);
+    }
+
+    checkForToken();
+  }, []);
 
   const isAuth = useSelector((state: any) => state.auth.isAuthenticated);
-  
+
+  if (!isAppReady) {
+    return (
+      <SafeAreaView
+        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+      >
+        <ActivityIndicator size="large" color="#0000ff" />
+      </SafeAreaView>
+    );
+  }
+
   function AuthenticatedTabs() {
     return (
       <SafeAreaView style={{ backgroundColor: color.background, flex: 1 }}>
@@ -37,7 +89,7 @@ export default function App() {
               } else if (route.name === "Profile") {
                 iconName = focused ? "person" : "person-outline";
               }
-  
+
               return (
                 <Ionicons name={iconName as any} size={size} color={color} />
               );
@@ -69,6 +121,6 @@ export default function App() {
       // <Login />
     );
   }
- 
-  return isAuth? <AuthenticatedTabs/> : <NonAuthenticatedTabs/>;
+
+  return isAuth ? <AuthenticatedTabs /> : <NonAuthenticatedTabs />;
 }

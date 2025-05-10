@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,10 +7,22 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useThemeColors } from "@/constants/ThemeContext";
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { config } from "./../config";
+import {
+  loginStart,
+  loginSuccess,
+  loginFailure,
+} from "../store/slices/authSlice";
+import axios from "axios";
+import { useDispatch, useSelector } from "react-redux";
+import { BlurView } from "expo-blur";
 
 export default function Login() {
   const colors = useThemeColors();
@@ -18,10 +30,68 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [secure, setSecure] = useState(true);
   const naviagtion = useNavigation();
+  const dispatch = useDispatch();
+  const isLoading = useSelector((state) => state.auth.loading);
 
-  const handleLogin = useCallback(() => {
-    console.log("Login", { email, password });
-  }, [email, password]);
+  const validateUserInput = ({ email }) => {
+    const errors = {};
+
+    // Email: basic format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Invalid email format";
+    }
+
+    return {
+      isValid: Object.keys(errors).length === 0,
+      errors,
+    };
+  };
+
+  async function loginRequestToBackend(data) {
+    try {
+      const response = await axios.post(`${config.API_URL}/auth/login`, data);
+      console.log("login Success:", response.data);
+      dispatch(loginSuccess(response.data));
+      await AsyncStorage.setItem("token", response.data.token);
+      // return response.data;
+    } catch (error) {
+      console.log("login Failed:", error.response?.data || error.message);
+      dispatch(loginFailure(error.message));
+      Alert.alert("login Failed", error.response.data.message);
+      // return { error: true, message: error.response?.data || error.message };
+    }
+  }
+
+  const handleLogin = async () => {
+    const isValid = validateUserInput({ email });
+
+    if (isValid.isValid) {
+      dispatch(loginStart());
+      console.log("Log in", { email, password });
+      loginRequestToBackend({ email, password });
+    } else {
+      const erorrToDisplay = Object.entries(isValid.errors)[0];
+      Alert.alert(erorrToDisplay[0], erorrToDisplay[1]);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#fff",
+        }}
+      >
+        <ActivityIndicator size="large" color="#007bff" />
+        <Text style={{ marginTop: 12, fontSize: 16, color: "#333" }}>
+          Logging in...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -31,7 +101,10 @@ export default function Login() {
       <Text style={[styles.title, { color: colors.text }]}>Login</Text>
 
       <TextInput
-        style={[styles.input, { color: colors.text, borderColor: colors.primary }]}
+        style={[
+          styles.input,
+          { color: colors.text, borderColor: colors.primary },
+        ]}
         placeholder="Email"
         placeholderTextColor={colors.text + "99"}
         value={email}
@@ -43,7 +116,10 @@ export default function Login() {
 
       <View style={styles.passwordContainer}>
         <TextInput
-          style={[styles.passwordInput, { color: colors.text, borderColor: colors.primary }]}
+          style={[
+            styles.passwordInput,
+            { color: colors.text, borderColor: colors.primary },
+          ]}
           placeholder="Password"
           placeholderTextColor={colors.text + "99"}
           value={password}
@@ -51,7 +127,10 @@ export default function Login() {
           secureTextEntry={secure}
           textContentType="password"
         />
-        <TouchableOpacity onPress={() => setSecure(!secure)} style={styles.eyeButton}>
+        <TouchableOpacity
+          onPress={() => setSecure(!secure)}
+          style={styles.eyeButton}
+        >
           <Ionicons
             name={secure ? "eye-off-outline" : "eye-outline"}
             size={22}
@@ -68,10 +147,12 @@ export default function Login() {
       </TouchableOpacity>
 
       <TouchableOpacity>
-        <Text style={[styles.link, { color: colors.primary }]}>Forgot Password?</Text>
+        <Text style={[styles.link, { color: colors.primary }]}>
+          Forgot Password?
+        </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={()=>naviagtion.navigate("SignUp")}>
+      <TouchableOpacity onPress={() => naviagtion.navigate("SignUp")}>
         <Text style={[styles.link, { color: colors.primary }]}>
           Don’t have an account? Sign Up
         </Text>
@@ -82,7 +163,12 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", paddingHorizontal: 24 },
-  title: { fontSize: 28, fontWeight: "700", textAlign: "center", marginBottom: 32 },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 32,
+  },
   input: {
     borderWidth: 1,
     borderRadius: 8,
